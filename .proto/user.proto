@@ -1,7 +1,19 @@
 syntax = "proto3";
-package main;
+
+package grpc;
 
 option go_package = "github.com/kerosiinikone/go-docker-grpc/grpc";
+
+service UserService {
+   rpc GetUser(Identifier) returns (User) {}
+   rpc GetUserList(EmptyParams) returns (stream UserList) {}
+}
+
+message Identifier {
+    int32 id = 1;
+}
+
+message EmptyParams {}
 
 message User {
     int32 id = 1;
