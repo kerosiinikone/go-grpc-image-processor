@@ -45,12 +45,12 @@ func (u *UserSvcServer) GetUserList(p *gen.EmptyParams, svc gen.UserService_GetU
 }
 
 func main() {
-	cfg := config.New()
+	cfg := config.Load()
 	usr := UserSvcServer{}
 
 	// Server
 
-	l, err := net.Listen("tcp", fmt.Sprintf("%s:%d", cfg.Addr, cfg.Port))
+	l, err := net.Listen("tcp", fmt.Sprintf("%s:%d", cfg.Server.Addr, cfg.Server.Port))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}

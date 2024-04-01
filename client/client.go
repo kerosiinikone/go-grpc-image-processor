@@ -53,13 +53,13 @@ func runGetUserList(client gen.UserServiceClient) {
 }
 
 func main() {
-	cfg := config.New()
+	cfg := config.Load()
 
 	var (
 		opts = []grpc.DialOption{
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		}
-		serverAdrr = fmt.Sprintf("%s:%d", cfg.Addr, cfg.Port)
+		serverAdrr = fmt.Sprintf("%s:%d", cfg.Server.Addr, cfg.Server.Port)
 	)
 	conn, err := grpc.Dial(serverAdrr, opts...)
 	if err != nil {
