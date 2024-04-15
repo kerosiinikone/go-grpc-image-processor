@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package grpc;
+
+option go_package = "github.com/kerosiinikone/go-docker-grpc/grpc";
+
+// The same "rpc TransferImageBytes" is used throughout the whole application
+// between service communication and client server communiation
+
+service ImageService {
+    // Only small images since the connection is open during the whole process
+    rpc TransferImageBytes(stream Image) returns (EmptyParams);
+}
+
+message Image {
+    bytes image_data = 1;
+    int32 image_height = 2;
+    int32 image_width = 3;
+    optional string json_metadata = 4;
+    optional bool processed = 5;
+    // ...
+}
+
+message EmptyParams {}

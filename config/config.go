@@ -16,7 +16,7 @@ import (
 // )
 
 var (
-	local = flag.String("local", "../local.yaml", "Local config relative path")
+	local = flag.String("local", "local.yaml", "Local config relative path")
 )
 
 // Config holds addresses, ports and db URIs

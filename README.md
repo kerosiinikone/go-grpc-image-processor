@@ -1,8 +1,7 @@
-# Go gRPC Demo
+# Go gRPC Image Processing Service Demo
 
 ### TODOs:
 
-- Real World Application
 - Dockerfiles for both server and client
 - docker-compose
 - Request Auth

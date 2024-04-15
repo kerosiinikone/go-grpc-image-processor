@@ -1,63 +1,17 @@
 package main
 
-import (
-	"context"
-	"fmt"
-	"log"
-	"net"
+// Image Processing Service
 
-	config "github.com/kerosiinikone/go-docker-grpc/config"
-	gen "github.com/kerosiinikone/go-docker-grpc/grpc"
-	"google.golang.org/grpc"
-)
+// service.proto defines protobuf message formats for
+// image transfering between client and the services
 
-// GetUser(context.Context, *Identifier) (*User, error)
-// GetUserList(*EmptyParams, UserService_GetUserListServer) error
+// The service itself houses 2 - 3 separate microservices
+// that communicate using gRPC
 
-type UserSvcServer struct{
-	gen.UnimplementedUserServiceServer
-}
+// The image is sent from client to server (1) in chunks and
+// subsequently streamed to the first processing service (2)
+// and onwards
 
-func (u *UserSvcServer) GetUser(context.Context, *gen.Identifier) (*gen.User, error) {
-	// Context...
-	return &gen.User{
-		Id: 1,
-		Name: "Foo",
-	}, nil
-}
+// Key Points: Service Chaining, gRPC, Microservices in a Nutshell
 
-
-func (u *UserSvcServer) GetUserList(p *gen.EmptyParams, svc gen.UserService_GetUserListServer) error {
-	// Context...
-	for i := 0; i < 10; i++ {
-		if err := svc.Send(&gen.UserList{
-			Users: []*gen.User{
-				{
-					Id: int32(i),
-					Name: fmt.Sprintf("User %d", i),
-				},
-			},
-		}); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func main() {
-	cfg := config.Load()
-	usr := UserSvcServer{}
-
-	// Server
-
-	l, err := net.Listen("tcp", fmt.Sprintf("%s:%d", cfg.Server.Addr, cfg.Server.Port))
-	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
-	}
-	var opts []grpc.ServerOption
-
-	grpcServer := grpc.NewServer(opts...)
-	gen.RegisterUserServiceServer(grpcServer, &usr)
-	grpcServer.Serve(l)
-
-}
+func main() {}

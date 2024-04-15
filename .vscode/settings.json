@@ -24,7 +24,7 @@
   "editor.minimap.enabled": false,
   "editor.renderLineHighlight": "none",
   "editor.cursorStyle": "block",
-  "editor.lineNumbers": "off",
+  "editor.lineNumbers": "on",
   "editor.cursorBlinking": "solid",
   "editor.folding": false,
   "editor.autoClosingBrackets": "never",

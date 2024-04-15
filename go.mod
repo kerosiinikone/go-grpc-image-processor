@@ -3,6 +3,7 @@ module github.com/kerosiinikone/go-docker-grpc
 go 1.21.6
 
 require (
+	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
 	google.golang.org/grpc v1.62.1
 	google.golang.org/protobuf v1.33.0
 	gopkg.in/yaml.v2 v2.4.0
