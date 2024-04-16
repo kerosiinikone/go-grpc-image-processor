@@ -238,5 +238,10 @@
   "rust-analyzer.completion.callable.snippets": "none",
   "rust-analyzer.semanticHighlighting.doc.comment.inject.enable": false,
   "rust-analyzer.procMacro.ignored": {},
-  "workbench.activityBar.location": "hidden"
+  "workbench.activityBar.location": "hidden",
+  "[go]": {
+    "editor.insertSpaces": true,
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "golang.go"
+  },
 }

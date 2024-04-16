@@ -9,27 +9,31 @@ import (
 	"github.com/nfnt/resize"
 )
 
+// TODO: To signal reception of the full image in bytes, the client
+// should send out an empty ImageChunk
+
 const processor = resize.Lanczos3
 
 func (i *Image) processImageBuffer(inch *chan ImageChunk, outch *chan ImageChunk) error {
 	var (
 		imgBuffer []byte
-		buf = new(bytes.Buffer)
+		buf       = new(bytes.Buffer)
 	)
 
 	for {
 		select {
-		case img_chunk := <- *inch:
+		case img_chunk := <-*inch:
 			imgBuffer = append(imgBuffer, img_chunk.data...)
 		default:
+			// Nothing in the pipeline
 			if len(imgBuffer) == 0 {
 				continue
 			} else {
 				newImg, _, err := image.Decode(bytes.NewReader(imgBuffer))
 				if err != nil {
+					// Incomplete
 					continue
 				}
-
 				// Resize
 				resizedImg := i.resize(newImg, 100, 100)
 
@@ -39,17 +43,14 @@ func (i *Image) processImageBuffer(inch *chan ImageChunk, outch *chan ImageChunk
 					return err
 				}
 				end_result := buf.Bytes()
-
 				*outch <- NewImageChunk(end_result, 100, 100)
-
 				// Signal Completion
 				*outch <- NewImageChunk(nil, 0, 0)
-
 				imgBuffer = imgBuffer[:0]
 				buf.Reset()
 			}
 		}
-		
+
 	}
 }
 
