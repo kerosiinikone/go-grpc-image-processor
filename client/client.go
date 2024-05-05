@@ -63,10 +63,11 @@ func (i *Image) loadImageChunks(outch *chan Image) {
 
 func main() {
 	var (
-		cfg   = c.Load()
-		outch = make(chan Image)
-		wg    sync.WaitGroup
-		i     Image
+		cfg             = c.Load()
+		outch           = make(chan Image)
+		wg              sync.WaitGroup
+		i               Image
+		finalImageBytes []byte
 	)
 
 	conn, err := grpc.Dial(
@@ -120,8 +121,10 @@ func main() {
 			}
 
 			img_data := resp.ImageData
+			finalImageBytes = append(finalImageBytes, img_data...)
 			log.Printf("new chunk %v received", img_data)
 		}
 	}()
 	wg.Wait()
+
 }

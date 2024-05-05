@@ -16,9 +16,10 @@ type Image struct{}
 
 // Internal Data -> attach metadata to chunks of data later
 type ImageChunk struct {
-	data   []byte
-	height int32
-	width  int32
+	data      []byte
+	height    int32
+	width     int32
+	completed bool
 }
 
 // Augmented gRPC logic for concurrent processing
@@ -29,11 +30,12 @@ type apiService struct {
 	img_grpc.UnsafeImageServiceServer
 }
 
-func NewImageChunk(d []byte, h int32, w int32) ImageChunk {
+func NewImageChunk(d []byte, h int32, w int32, completed bool) ImageChunk {
 	return ImageChunk{
-		data:   d,
-		height: h,
-		width:  w,
+		data:      d,
+		height:    h,
+		width:     w,
+		completed: completed,
 	}
 }
 
@@ -47,10 +49,11 @@ func (svc *apiService) TransferImageBytes(srv img_grpc.ImageService_TransferImag
 	wg.Add(1)
 	go func() {
 		for processed := range svc.outch {
-			if processed.data == nil {
+			if processed.completed {
 				wg.Done()
 				return
 			} else {
+				fmt.Printf("New processed: %+v\n", processed.data)
 				resp := img_grpc.Image{
 					ImageData:   processed.data,
 					ImageHeight: processed.height,
@@ -70,6 +73,7 @@ func (svc *apiService) TransferImageBytes(srv img_grpc.ImageService_TransferImag
 		default:
 			image_data_req, err := srv.Recv()
 			if err == io.EOF {
+				svc.inch <- NewImageChunk(nil, 0, 0, true)
 				wg.Wait()
 				return nil
 			}
@@ -78,7 +82,7 @@ func (svc *apiService) TransferImageBytes(srv img_grpc.ImageService_TransferImag
 				continue
 			}
 			// Pipe to worker
-			svc.inch <- NewImageChunk(image_data_req.ImageData, image_data_req.ImageHeight, image_data_req.ImageWidth)
+			svc.inch <- NewImageChunk(image_data_req.ImageData, image_data_req.ImageHeight, image_data_req.ImageWidth, false)
 		}
 	}
 }

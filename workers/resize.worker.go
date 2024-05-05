@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
+	"fmt"
 	"image"
 	"image/jpeg"
+	"io"
 	"log"
 
 	"github.com/nfnt/resize"
@@ -16,44 +19,69 @@ const processor = resize.Lanczos3
 
 func (i *Image) processImageBuffer(inch *chan ImageChunk, outch *chan ImageChunk) error {
 	var (
-		imgBuffer []byte
-		buf       = new(bytes.Buffer)
+		imgBuffer = new(bytes.Buffer)
+		rImgBuf   = new(bytes.Buffer)
+		eof       = false
 	)
 
 	for {
 		select {
 		case img_chunk := <-*inch:
-			imgBuffer = append(imgBuffer, img_chunk.data...)
-		default:
-			// Nothing in the pipeline
-			if len(imgBuffer) == 0 {
-				continue
+			if img_chunk.completed {
+				eof = true
 			} else {
-				newImg, _, err := image.Decode(bytes.NewReader(imgBuffer))
+				imgBuffer.Write(img_chunk.data)
+			}
+		default:
+			if eof {
+				resizedImg, err := i.resize(imgBuffer, 100, 100)
 				if err != nil {
-					// Incomplete
+					fmt.Printf("Error decoding: %s\n", err.Error())
 					continue
 				}
-				// Resize
-				resizedImg := i.resize(newImg, 100, 100)
-
-				err = jpeg.Encode(buf, resizedImg, nil)
+				err = jpeg.Encode(rImgBuf, resizedImg, nil)
 				if err != nil {
 					log.Fatalf("Error: %v", err)
 					return err
 				}
-				end_result := buf.Bytes()
-				*outch <- NewImageChunk(end_result, 100, 100)
-				// Signal Completion
-				*outch <- NewImageChunk(nil, 0, 0)
-				imgBuffer = imgBuffer[:0]
-				buf.Reset()
+				// Successful Image Resizing
+				go i.pipeResult(rImgBuf, outch)
+
+				imgBuffer.Reset()
+				eof = false
 			}
 		}
-
 	}
 }
 
-func (i *Image) resize(img image.Image, newHeight int32, newWidth int32) image.Image {
-	return resize.Resize(uint(newHeight), uint(newWidth), img, processor)
+func (i *Image) resize(r io.Reader, newHeight int32, newWidth int32) (image.Image, error) {
+	img, err := jpeg.Decode(r)
+	if err != nil {
+		return nil, err
+	}
+	return resize.Resize(uint(newHeight), uint(newWidth), img, processor), nil
+}
+
+func (i *Image) pipeResult(b *bytes.Buffer, c *chan ImageChunk) {
+	var (
+		reader    = bufio.NewReader(b)
+		chunkSize = 64
+	)
+
+	for {
+		chunk := make([]byte, chunkSize)
+		n, err := reader.Read(chunk)
+		fmt.Printf("New chunk: %+v", chunk)
+		if err != nil {
+			if err == io.EOF {
+				*c <- NewImageChunk(nil, 0, 0, true)
+				b.Reset()
+				break
+			} else {
+				fmt.Println("Error reading chunk:", err)
+				break
+			}
+		}
+		*c <- NewImageChunk(chunk[:n], 100, 100, false)
+	}
 }
