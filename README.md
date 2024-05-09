@@ -19,3 +19,4 @@ Keep the order of commands as the connections between nodes are dependent on the
 - Common function signatures and refactoring with interfaces
 - Dynamic resizing
 - Refactoring logic
+- Processed field on transferred images
