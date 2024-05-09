@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"sync"
@@ -45,7 +44,7 @@ func (svc *apiService) TransferImageBytes(srv img_grpc.ImageService_TransferImag
 		wg  sync.WaitGroup
 	)
 
-	// Send to client -> listen to processed data
+	// Send final to client
 	wg.Add(1)
 	go func() {
 		for processed := range svc.outch {
@@ -53,7 +52,7 @@ func (svc *apiService) TransferImageBytes(srv img_grpc.ImageService_TransferImag
 				wg.Done()
 				return
 			} else {
-				fmt.Printf("New processed: %+v\n", processed.data)
+				fmt.Printf("Sending final from invert: %+v\n", processed.data)
 				resp := img_grpc.Image{
 					ImageData:   processed.data,
 					ImageHeight: processed.height,
@@ -72,15 +71,16 @@ func (svc *apiService) TransferImageBytes(srv img_grpc.ImageService_TransferImag
 			return ctx.Err()
 		default:
 			image_data_req, err := srv.Recv()
-			if err == io.EOF {
-				svc.inch <- NewImageChunk(nil, 0, 0, true)
-				wg.Wait()
-				return nil
-			}
 			if err != nil {
 				// Retry
 				continue
 			}
+			if image_data_req.ImageData == nil {
+				svc.inch <- NewImageChunk(nil, 0, 0, true)
+				wg.Wait()
+				return nil
+			}
+
 			// Pipe to worker
 			svc.inch <- NewImageChunk(image_data_req.ImageData, image_data_req.ImageHeight, image_data_req.ImageWidth, false)
 		}
@@ -88,7 +88,7 @@ func (svc *apiService) TransferImageBytes(srv img_grpc.ImageService_TransferImag
 }
 
 func startServerAndListen(cfg *c.Config, in *chan ImageChunk, out *chan ImageChunk) {
-	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d1", cfg.Server.Addr, cfg.Server.Port))
+	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d2", cfg.Server.Addr, cfg.Server.Port))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
@@ -103,7 +103,6 @@ func startServerAndListen(cfg *c.Config, in *chan ImageChunk, out *chan ImageChu
 }
 
 func main() {
-
 	var (
 		cfg   = c.Load()
 		inch  = make(chan ImageChunk) // Unprocessed

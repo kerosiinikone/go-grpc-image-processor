@@ -9,13 +9,8 @@ import (
 	"io"
 	"log"
 
-	"github.com/nfnt/resize"
+	"github.com/disintegration/imaging"
 )
-
-// TODO: To signal reception of the full image in bytes, the client
-// should send out an empty ImageChunk
-
-const processor = resize.Lanczos3
 
 func (i *Image) processImageBuffer(inch *chan ImageChunk, outch *chan ImageChunk) error {
 	var (
@@ -34,17 +29,17 @@ func (i *Image) processImageBuffer(inch *chan ImageChunk, outch *chan ImageChunk
 			}
 		default:
 			if eof {
-				resizedImg, err := i.resize(imgBuffer, 100, 100)
+				invertedImg, err := i.invertImageColors(imgBuffer)
 				if err != nil {
 					fmt.Printf("Error decoding: %s\n", err.Error())
 					continue
 				}
-				err = jpeg.Encode(rImgBuf, resizedImg, nil)
+				err = jpeg.Encode(rImgBuf, invertedImg, nil)
 				if err != nil {
 					log.Fatalf("Error: %v", err)
 					return err
 				}
-				// Successful Image Resizing
+
 				go i.pipeResult(rImgBuf, outch)
 
 				imgBuffer.Reset()
@@ -54,12 +49,12 @@ func (i *Image) processImageBuffer(inch *chan ImageChunk, outch *chan ImageChunk
 	}
 }
 
-func (i *Image) resize(r io.Reader, newHeight int32, newWidth int32) (image.Image, error) {
+func (i *Image) invertImageColors(r io.Reader) (image.Image, error) {
 	img, err := jpeg.Decode(r)
 	if err != nil {
 		return nil, err
 	}
-	return resize.Resize(uint(newHeight), uint(newWidth), img, processor), nil
+	return imaging.Invert(img), nil
 }
 
 func (i *Image) pipeResult(b *bytes.Buffer, c *chan ImageChunk) {
@@ -71,7 +66,6 @@ func (i *Image) pipeResult(b *bytes.Buffer, c *chan ImageChunk) {
 	for {
 		chunk := make([]byte, chunkSize)
 		n, err := reader.Read(chunk)
-		fmt.Printf("New chunk: %+v", chunk)
 		if err != nil {
 			if err == io.EOF {
 				*c <- NewImageChunk(nil, 0, 0, true)

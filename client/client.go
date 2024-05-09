@@ -2,8 +2,10 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
+	"image/jpeg"
 	"io"
 	"log"
 	"os"
@@ -44,14 +46,13 @@ func (i *Image) loadImageChunks(outch *chan Image) {
 		_, err := reader.Read(chunk)
 		if err == io.EOF {
 			close(*outch)
-			fmt.Printf("End of data")
+			fmt.Println("End of data")
 			return
 		}
 		if err != nil {
 			log.Fatalf("Read -> %v", err)
 		}
 
-		fmt.Printf("Read image: %v\n", chunk)
 		// NewImage, etc
 		*outch <- Image{
 			height: 0,
@@ -61,13 +62,28 @@ func (i *Image) loadImageChunks(outch *chan Image) {
 	}
 }
 
+func outputImageFile(r io.Reader) {
+	img, err := jpeg.Decode(r)
+	if err != nil {
+		log.Fatalf("Error decoding: %+v\n", err)
+	}
+	f, err := os.Create("output.jpg")
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+	if err = jpeg.Encode(f, img, nil); err != nil {
+		log.Printf("failed to encode: %v", err)
+	}
+}
+
 func main() {
 	var (
 		cfg             = c.Load()
 		outch           = make(chan Image)
 		wg              sync.WaitGroup
 		i               Image
-		finalImageBytes []byte
+		finalImageBytes = new(bytes.Buffer)
 	)
 
 	conn, err := grpc.Dial(
@@ -110,19 +126,20 @@ func main() {
 	go func() {
 		for {
 			resp, err := stream.Recv()
-			if err == io.EOF {
-				// Return or continue based on whether you want
-				// to continue streaming from the channel or restart
-				wg.Done()
-				return
-			}
 			if err != nil {
 				log.Fatalf("can not receive %v", err)
 			}
 
+			// Signal completion
+			if resp.ImageData == nil {
+				outputImageFile(finalImageBytes)
+				wg.Done()
+				return
+			}
+
 			img_data := resp.ImageData
-			finalImageBytes = append(finalImageBytes, img_data...)
-			log.Printf("new chunk %v received", img_data)
+			finalImageBytes.Write(img_data)
+			log.Printf("%v received\n", img_data)
 		}
 	}()
 	wg.Wait()

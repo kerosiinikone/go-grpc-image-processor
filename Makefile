@@ -1,10 +1,16 @@
 run-worker: export GRPC_VERBOSITY=debug
 
-build-worker:
-	@go build -o bin/workers ./workers
+build-worker-resize:
+	@go build -o bin/workers/resize ./workers/resize
 
-run-worker: build-worker
-	@./bin/workers
+run-worker-resize: build-worker-resize
+	@./bin/workers/resize
+
+build-worker-invert:
+	@go build -o bin/workers/invert ./workers/invert
+
+run-worker-invert: build-worker-invert
+	@./bin/workers/invert
 
 build-client:
 	@go build -o bin/client ./client
