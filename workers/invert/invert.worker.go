@@ -70,10 +70,10 @@ func (i *Image) pipeResult(b *bytes.Buffer, c *chan ImageChunk) {
 			if err == io.EOF {
 				*c <- NewImageChunk(nil, 0, 0, true)
 				b.Reset()
-				break
+				return
 			} else {
 				fmt.Println("Error reading chunk:", err)
-				break
+				return
 			}
 		}
 		*c <- NewImageChunk(chunk[:n], 100, 100, false)

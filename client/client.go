@@ -46,7 +46,6 @@ func (i *Image) loadImageChunks(outch *chan Image) {
 		_, err := reader.Read(chunk)
 		if err == io.EOF {
 			close(*outch)
-			fmt.Println("End of data")
 			return
 		}
 		if err != nil {
@@ -126,20 +125,19 @@ func main() {
 	go func() {
 		for {
 			resp, err := stream.Recv()
-			if err != nil {
-				log.Fatalf("can not receive %v", err)
-			}
-
 			// Signal completion
-			if resp.ImageData == nil {
+			if err == io.EOF {
 				outputImageFile(finalImageBytes)
 				wg.Done()
 				return
 			}
 
+			if err != nil {
+				log.Fatalf("can not receive %v", err)
+			}
+
 			img_data := resp.ImageData
 			finalImageBytes.Write(img_data)
-			log.Printf("%v received\n", img_data)
 		}
 	}()
 	wg.Wait()

@@ -26,8 +26,10 @@ type ImageChunk struct {
 
 // Augmented gRPC logic for concurrent processing
 type apiService struct {
-	inch  chan ImageChunk
-	outch chan ImageChunk
+	inch   chan ImageChunk
+	outch  chan ImageChunk
+	rechan chan ImageChunk
+	cfg    c.Config
 
 	img_grpc.UnsafeImageServiceServer
 }
@@ -47,15 +49,16 @@ func (svc *apiService) TransferImageBytes(srv img_grpc.ImageService_TransferImag
 		wg  sync.WaitGroup
 	)
 
+	go handleProxyImageService(&svc.cfg, &svc.outch, &svc.rechan)
+
 	// Send final to client -> listen to the following service
 	wg.Add(1)
 	go func() {
-		for final := range svc.outch {
+		for final := range svc.rechan {
 			if final.completed {
 				wg.Done()
 				return
 			} else {
-				fmt.Printf("Sending final to client from resize: %+v\n", final.data)
 				resp := img_grpc.Image{
 					ImageData:   final.data,
 					ImageWidth:  final.width,
@@ -89,15 +92,17 @@ func (svc *apiService) TransferImageBytes(srv img_grpc.ImageService_TransferImag
 	}
 }
 
-func startServerAndListen(cfg *c.Config, in *chan ImageChunk, out *chan ImageChunk) {
+func startServerAndListen(cfg *c.Config, in *chan ImageChunk, out *chan ImageChunk, re *chan ImageChunk) {
 	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d1", cfg.Server.Addr, cfg.Server.Port))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	s := grpc.NewServer()
 	img_grpc.RegisterImageServiceServer(s, &apiService{
-		inch:  *in,
-		outch: *out,
+		inch:   *in,
+		outch:  *out,
+		rechan: *re,
+		cfg:    *cfg,
 	})
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
@@ -124,27 +129,29 @@ func handleProxyImageService(cfg *c.Config, outch *chan ImageChunk, rechan *chan
 
 	// Send to service 2 -> receive from worker
 	go func() {
+		fmt.Println("Client sender started")
 		for img_chunk := range *outch {
 			var req img_grpc.Image
 
 			if img_chunk.completed {
 				req = img_grpc.Image{
-					ImageData:   nil,
-					ImageHeight: 0,
-					ImageWidth:  0,
+					ImageData: nil,
 				}
+				if err := stream.Send(&req); err != nil {
+					log.Fatalf("can not send %v", err)
+				}
+				fmt.Println("Client sender returned")
+				return
 			} else {
 				req = img_grpc.Image{
 					ImageData:   img_chunk.data,
 					ImageHeight: img_chunk.height,
 					ImageWidth:  img_chunk.width,
 				}
+				if err := stream.Send(&req); err != nil {
+					log.Fatalf("can not send %v", err)
+				}
 			}
-
-			if err := stream.Send(&req); err != nil {
-				log.Fatalf("can not send %v", err)
-			}
-
 		}
 		if err := stream.CloseSend(); err != nil {
 			log.Fatalf("%v", err)
@@ -153,16 +160,19 @@ func handleProxyImageService(cfg *c.Config, outch *chan ImageChunk, rechan *chan
 
 	wg.Add(1)
 	go func() {
+		fmt.Println("Client receiver started")
 		for {
 			resp, err := stream.Recv()
 			if err != nil {
-				log.Fatalf("can not receive %v", err)
+				continue
 			}
 			if resp.ImageData == nil {
 				*rechan <- NewImageChunk(nil, 0, 0, true) // Signal Completion
-			} else {
-				*rechan <- NewImageChunk(resp.ImageData, resp.ImageHeight, resp.ImageWidth, false)
+				wg.Done()
+				fmt.Println("Client receiver returned")
+				return
 			}
+			*rechan <- NewImageChunk(resp.ImageData, resp.ImageHeight, resp.ImageWidth, false)
 		}
 	}()
 	wg.Wait()
@@ -177,10 +187,8 @@ func main() {
 		i      = Image{}
 	)
 
-	// Client - Pipe
-	go handleProxyImageService(cfg, &outch, &rechan)
 	// Start Workers
 	go i.processImageBuffer(&inch, &outch)
 	// API
-	startServerAndListen(cfg, &inch, &rechan)
+	startServerAndListen(cfg, &inch, &outch, &rechan)
 }

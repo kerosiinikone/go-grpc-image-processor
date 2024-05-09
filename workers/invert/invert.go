@@ -49,10 +49,15 @@ func (svc *apiService) TransferImageBytes(srv img_grpc.ImageService_TransferImag
 	go func() {
 		for processed := range svc.outch {
 			if processed.completed {
+				resp := img_grpc.Image{
+					ImageData: nil,
+				}
+				if err := srv.Send(&resp); err != nil {
+					log.Printf("%+v", err)
+				}
 				wg.Done()
 				return
 			} else {
-				fmt.Printf("Sending final from invert: %+v\n", processed.data)
 				resp := img_grpc.Image{
 					ImageData:   processed.data,
 					ImageHeight: processed.height,
@@ -75,12 +80,12 @@ func (svc *apiService) TransferImageBytes(srv img_grpc.ImageService_TransferImag
 				// Retry
 				continue
 			}
+			// Signal
 			if image_data_req.ImageData == nil {
 				svc.inch <- NewImageChunk(nil, 0, 0, true)
 				wg.Wait()
 				return nil
 			}
-
 			// Pipe to worker
 			svc.inch <- NewImageChunk(image_data_req.ImageData, image_data_req.ImageHeight, image_data_req.ImageWidth, false)
 		}
