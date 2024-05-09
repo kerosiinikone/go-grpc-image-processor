@@ -22,8 +22,6 @@ func (i *Image) processImageBuffer(inch *chan ImageChunk, outch *chan ImageChunk
 		imgBuffer = new(bytes.Buffer)
 		rImgBuf   = new(bytes.Buffer)
 		eof       = false
-		// imgHeight int32
-		// imgWidth  int32
 	)
 
 	for {
@@ -36,7 +34,7 @@ func (i *Image) processImageBuffer(inch *chan ImageChunk, outch *chan ImageChunk
 			}
 		default:
 			if eof {
-				resizedImg, err := i.resize(imgBuffer, 22, 22)
+				resizedImg, err := i.resize(imgBuffer, 100, 100) // hardcoded for now
 				if err != nil {
 					fmt.Printf("Error decoding: %s\n", err.Error())
 					continue

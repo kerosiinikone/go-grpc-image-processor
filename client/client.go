@@ -1,14 +1,11 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"fmt"
-	"image/jpeg"
 	"io"
 	"log"
-	"os"
 	"sync"
 
 	c "github.com/kerosiinikone/go-docker-grpc/config"
@@ -17,72 +14,53 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-// TODO: Ability to load all image types
+// func connectToServer()  {}
+// func handleConnection() {}
 
-const input_img = "input.jpg"
+func streamImage(outch *chan Image, stream img_grpc.ImageService_TransferImageBytesClient) error {
+	for img_chunk := range *outch {
+		req := img_grpc.Image{
+			ImageData:   img_chunk.chunk,
+			ImageHeight: img_chunk.height,
+			ImageWidth:  img_chunk.width,
+		}
+		if err := stream.Send(&req); err != nil {
+			return err
+		}
+	}
+	if err := stream.CloseSend(); err != nil {
+		return err
+	}
 
-type Image struct {
-	height int32
-	width  int32
-	chunk  []byte
+	return nil
 }
 
-func (i *Image) loadImageChunks(outch *chan Image) {
-	var (
-		chunkSize = 64
-	)
-	file, err := os.Open(input_img)
-	if err != nil {
-		log.Fatalf("Open -> %v", err)
-	}
-	defer file.Close()
-
-	reader := bufio.NewReader(file)
-
-	// TODO: Get image config from chunks, etc
+func receiveImage(stream img_grpc.ImageService_TransferImageBytesClient) error {
+	finalImageBytes := new(bytes.Buffer)
 
 	for {
-		chunk := make([]byte, chunkSize)
-		_, err := reader.Read(chunk)
+		resp, err := stream.Recv()
+
+		// Signal completion
 		if err == io.EOF {
-			close(*outch)
-			return
+			if err := saveImage(finalImageBytes); err != nil {
+				return err
+			}
+			return nil
 		}
 		if err != nil {
-			log.Fatalf("Read -> %v", err)
+			continue
 		}
-
-		// NewImage, etc
-		*outch <- Image{
-			height: 0,
-			width:  0,
-			chunk:  chunk,
-		}
-	}
-}
-
-func outputImageFile(r io.Reader) {
-	img, err := jpeg.Decode(r)
-	if err != nil {
-		log.Fatalf("Error decoding: %+v\n", err)
-	}
-	f, err := os.Create("output.jpg")
-	if err != nil {
-		panic(err)
-	}
-	defer f.Close()
-	if err = jpeg.Encode(f, img, nil); err != nil {
-		log.Printf("failed to encode: %v", err)
+		img_data := resp.ImageData
+		finalImageBytes.Write(img_data)
 	}
 }
 
 func main() {
 	var (
-		cfg             = c.Load()
-		outch           = make(chan Image)
-		wg              sync.WaitGroup
-		i               Image
-		finalImageBytes = new(bytes.Buffer)
+		cfg   = c.Load()
+		outch = make(chan Image)
+		wg    sync.WaitGroup
 	)
 
 	conn, err := grpc.Dial(
@@ -93,53 +71,37 @@ func main() {
 	}
 	client := img_grpc.NewImageServiceClient(conn)
 
+	defer conn.Close()
+
 	// Open stream
 	stream, err := client.TransferImageBytes(context.Background())
 	if err != nil {
 		log.Fatalf("open stream error %v", err)
 	}
 
-	// Load the image concurrently
-	go i.loadImageChunks(&outch)
-
-	// Propagation
-	// ctx := stream.Context()
-
+	wg.Add(1)
 	go func() {
-		for img_chunk := range outch {
-			req := img_grpc.Image{
-				ImageData:   img_chunk.chunk,
-				ImageHeight: img_chunk.height,
-				ImageWidth:  img_chunk.width,
-			}
-			if err := stream.Send(&req); err != nil {
-				log.Fatalf("can not send %v", err)
-			}
-		}
-		if err := stream.CloseSend(); err != nil {
-			log.Fatalf("%v", err)
+		defer wg.Done()
+		if err := loadImage(&outch); err != nil {
+			log.Fatalf("Error loading image: %v", err)
 		}
 	}()
 
 	wg.Add(1)
 	go func() {
-		for {
-			resp, err := stream.Recv()
-			// Signal completion
-			if err == io.EOF {
-				outputImageFile(finalImageBytes)
-				wg.Done()
-				return
-			}
-
-			if err != nil {
-				log.Fatalf("can not receive %v", err)
-			}
-
-			img_data := resp.ImageData
-			finalImageBytes.Write(img_data)
+		defer wg.Done()
+		if err := streamImage(&outch, stream); err != nil {
+			log.Fatalf("Error streaming image: %v", err)
 		}
 	}()
-	wg.Wait()
 
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := receiveImage(stream); err != nil {
+			log.Fatalf("Error saving image: %v", err)
+		}
+	}()
+
+	wg.Wait()
 }
