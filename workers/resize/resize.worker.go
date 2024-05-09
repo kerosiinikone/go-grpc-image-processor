@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
 	"image"
@@ -9,32 +8,33 @@ import (
 	"io"
 	"log"
 
+	u "github.com/kerosiinikone/go-docker-grpc/workers"
 	"github.com/nfnt/resize"
 )
 
-// TODO: To signal reception of the full image in bytes, the client
-// should send out an empty ImageChunk
-
 const processor = resize.Lanczos3
 
-func (i *Image) processImageBuffer(inch *chan ImageChunk, outch *chan ImageChunk) error {
+// processImage reads the image chunks from the channel and buffers them to be eventually
+// processed by a utility function
+func processImage(inch *chan u.ImageChunk, outch *chan u.ImageChunk) error {
 	var (
 		imgBuffer = new(bytes.Buffer)
 		rImgBuf   = new(bytes.Buffer)
 		eof       = false
+		i         = u.Image{}
 	)
 
 	for {
 		select {
 		case img_chunk := <-*inch:
-			if img_chunk.completed {
+			if img_chunk.Completed {
 				eof = true
 			} else {
-				imgBuffer.Write(img_chunk.data)
+				imgBuffer.Write(img_chunk.Data)
 			}
 		default:
 			if eof {
-				resizedImg, err := i.resize(imgBuffer, 100, 100) // hardcoded for now
+				resizedImg, err := resizeImage(imgBuffer, 100, 100) // hardcoded for now
 				if err != nil {
 					fmt.Printf("Error decoding: %s\n", err.Error())
 					continue
@@ -45,7 +45,7 @@ func (i *Image) processImageBuffer(inch *chan ImageChunk, outch *chan ImageChunk
 					return err
 				}
 				// Successful Image Resizing
-				go i.pipeResult(rImgBuf, outch)
+				go i.PipeResult(rImgBuf, outch)
 
 				imgBuffer.Reset()
 				eof = false
@@ -54,33 +54,12 @@ func (i *Image) processImageBuffer(inch *chan ImageChunk, outch *chan ImageChunk
 	}
 }
 
-func (i *Image) resize(r io.Reader, newHeight int32, newWidth int32) (image.Image, error) {
+// resizeImage is a utility function that resizes an image from a reader and returns
+// an image.Image type
+func resizeImage(r io.Reader, newHeight int32, newWidth int32) (image.Image, error) {
 	img, err := jpeg.Decode(r)
 	if err != nil {
 		return nil, err
 	}
 	return resize.Resize(uint(newHeight), uint(newWidth), img, processor), nil
-}
-
-func (i *Image) pipeResult(b *bytes.Buffer, c *chan ImageChunk) {
-	var (
-		reader    = bufio.NewReader(b)
-		chunkSize = 64
-	)
-
-	for {
-		chunk := make([]byte, chunkSize)
-		n, err := reader.Read(chunk)
-		if err != nil {
-			if err == io.EOF {
-				*c <- NewImageChunk(nil, 0, 0, true)
-				b.Reset()
-				return
-			} else {
-				fmt.Println("Error reading chunk:", err)
-				return
-			}
-		}
-		*c <- NewImageChunk(chunk[:n], 100, 100, false)
-	}
 }

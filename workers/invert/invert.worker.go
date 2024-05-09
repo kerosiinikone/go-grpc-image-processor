@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
 	"image"
@@ -10,26 +9,30 @@ import (
 	"log"
 
 	"github.com/disintegration/imaging"
+	u "github.com/kerosiinikone/go-docker-grpc/workers"
 )
 
-func (i *Image) processImage(inch *chan ImageChunk, outch *chan ImageChunk) error {
+// processImage reads the image chunks from the channel and buffers them to be eventually
+// processed by a utility function
+func processImage(inch *chan u.ImageChunk, outch *chan u.ImageChunk) error {
 	var (
 		imgBuffer = new(bytes.Buffer)
 		rImgBuf   = new(bytes.Buffer)
 		eof       = false
+		i         = u.Image{}
 	)
 
 	for {
 		select {
 		case img_chunk := <-*inch:
-			if img_chunk.completed {
+			if img_chunk.Completed {
 				eof = true
 			} else {
-				imgBuffer.Write(img_chunk.data)
+				imgBuffer.Write(img_chunk.Data)
 			}
 		default:
 			if eof {
-				invertedImg, err := i.invertImageColors(imgBuffer)
+				invertedImg, err := invertImageColors(imgBuffer)
 				if err != nil {
 					fmt.Printf("Error decoding: %s\n", err.Error())
 					continue
@@ -40,7 +43,7 @@ func (i *Image) processImage(inch *chan ImageChunk, outch *chan ImageChunk) erro
 					return err
 				}
 
-				go i.pipeResult(rImgBuf, outch)
+				go i.PipeResult(rImgBuf, outch)
 
 				imgBuffer.Reset()
 				eof = false
@@ -49,33 +52,12 @@ func (i *Image) processImage(inch *chan ImageChunk, outch *chan ImageChunk) erro
 	}
 }
 
-func (i *Image) invertImageColors(r io.Reader) (image.Image, error) {
+// invertImageColors is a utility function that inverts the colors of an image.Image from
+// an io.Reader type
+func invertImageColors(r io.Reader) (image.Image, error) {
 	img, err := jpeg.Decode(r)
 	if err != nil {
 		return nil, err
 	}
 	return imaging.Invert(img), nil
-}
-
-func (i *Image) pipeResult(b *bytes.Buffer, c *chan ImageChunk) {
-	var (
-		reader    = bufio.NewReader(b)
-		chunkSize = 64
-	)
-
-	for {
-		chunk := make([]byte, chunkSize)
-		n, err := reader.Read(chunk)
-		if err != nil {
-			if err == io.EOF {
-				*c <- NewImageChunk(nil, 0, 0, true)
-				b.Reset()
-				return
-			} else {
-				fmt.Println("Error reading chunk:", err)
-				return
-			}
-		}
-		*c <- NewImageChunk(chunk[:n], 100, 100, false)
-	}
 }
