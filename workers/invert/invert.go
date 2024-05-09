@@ -11,9 +11,11 @@ import (
 	"google.golang.org/grpc"
 )
 
+// Placehoder for a Processor interface (later)
 type Image struct{}
 
-// Internal Data -> attach metadata to chunks of data later
+// ImageChunk holds data that is relevant when chunks of an image are
+// passed around internally
 type ImageChunk struct {
 	data      []byte
 	height    int32
@@ -21,7 +23,8 @@ type ImageChunk struct {
 	completed bool
 }
 
-// Augmented gRPC logic for concurrent processing
+// apiService is a gRPC placeholder that is augmented
+// with logic for concurrent processing
 type apiService struct {
 	inch  chan ImageChunk
 	outch chan ImageChunk
@@ -29,6 +32,7 @@ type apiService struct {
 	img_grpc.UnsafeImageServiceServer
 }
 
+// Creates a new ImageChunk with an image chunk and image dimensions
 func NewImageChunk(d []byte, h int32, w int32, completed bool) ImageChunk {
 	return ImageChunk{
 		data:      d,
@@ -38,13 +42,13 @@ func NewImageChunk(d []byte, h int32, w int32, completed bool) ImageChunk {
 	}
 }
 
+// gRPC magic function that is defined in the .proto files
 func (svc *apiService) TransferImageBytes(srv img_grpc.ImageService_TransferImageBytesServer) error {
 	var (
 		ctx = srv.Context()
 		wg  sync.WaitGroup
 	)
 
-	// Send final to client
 	wg.Add(1)
 	go func() {
 		for processed := range svc.outch {
@@ -80,18 +84,21 @@ func (svc *apiService) TransferImageBytes(srv img_grpc.ImageService_TransferImag
 				// Retry
 				continue
 			}
-			// Signal
+			// Signal completion with an empty ImageChunk
 			if image_data_req.ImageData == nil {
 				svc.inch <- NewImageChunk(nil, 0, 0, true)
 				wg.Wait()
 				return nil
 			}
-			// Pipe to worker
+
+			// Pipe the data to a worker
 			svc.inch <- NewImageChunk(image_data_req.ImageData, image_data_req.ImageHeight, image_data_req.ImageWidth, false)
 		}
 	}
 }
 
+// Listens for TCP connections for a port and an address
+// that are set in the config
 func startServerAndListen(cfg *c.Config, in *chan ImageChunk, out *chan ImageChunk) {
 	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d2", cfg.Server.Addr, cfg.Server.Port))
 	if err != nil {
@@ -109,14 +116,19 @@ func startServerAndListen(cfg *c.Config, in *chan ImageChunk, out *chan ImageChu
 
 func main() {
 	var (
-		cfg   = c.Load()
+		cfg   = c.Load()              // Holds the server addresses
 		inch  = make(chan ImageChunk) // Unprocessed
 		outch = make(chan ImageChunk) // Processed
 		i     = Image{}
 	)
 
-	// Start Workers
-	go i.processImageBuffer(&inch, &outch)
-	// API
+	// Starts the worker
+	go func() {
+		if err := i.processImage(&inch, &outch); err != nil {
+			log.Fatalf("Error processing image: %v", err)
+		}
+	}()
+
+	// Starts the API (blocking)
 	startServerAndListen(cfg, &inch, &outch)
 }

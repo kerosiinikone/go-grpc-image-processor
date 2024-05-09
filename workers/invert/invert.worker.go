@@ -12,7 +12,7 @@ import (
 	"github.com/disintegration/imaging"
 )
 
-func (i *Image) processImageBuffer(inch *chan ImageChunk, outch *chan ImageChunk) error {
+func (i *Image) processImage(inch *chan ImageChunk, outch *chan ImageChunk) error {
 	var (
 		imgBuffer = new(bytes.Buffer)
 		rImgBuf   = new(bytes.Buffer)

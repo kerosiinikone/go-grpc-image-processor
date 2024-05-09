@@ -14,9 +14,11 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+// Placehoder for a Processor interface (later)
 type Image struct{}
 
-// Internal Data -> attach metadata to chunks of data later
+// ImageChunk holds data that is relevant when chunks of an image are
+// passed around internally
 type ImageChunk struct {
 	data      []byte
 	height    int32
@@ -24,7 +26,8 @@ type ImageChunk struct {
 	completed bool
 }
 
-// Augmented gRPC logic for concurrent processing
+// apiService is a gRPC placeholder that is augmented
+// with logic for concurrent processing
 type apiService struct {
 	inch   chan ImageChunk
 	outch  chan ImageChunk
@@ -34,6 +37,7 @@ type apiService struct {
 	img_grpc.UnsafeImageServiceServer
 }
 
+// Creates a new ImageChunk with an image chunk and image dimensions
 func NewImageChunk(d []byte, h int32, w int32, completed bool) ImageChunk {
 	return ImageChunk{
 		data:      d,
@@ -43,6 +47,7 @@ func NewImageChunk(d []byte, h int32, w int32, completed bool) ImageChunk {
 	}
 }
 
+// gRPC magic function that is defined in the .proto files
 func (svc *apiService) TransferImageBytes(srv img_grpc.ImageService_TransferImageBytesServer) error {
 	var (
 		ctx = srv.Context()
@@ -187,8 +192,9 @@ func main() {
 		i      = Image{}
 	)
 
-	// Start Workers
+	// Starts the workers
 	go i.processImageBuffer(&inch, &outch)
-	// API
+
+	// Starts the API (blocking)
 	startServerAndListen(cfg, &inch, &outch, &rechan)
 }
