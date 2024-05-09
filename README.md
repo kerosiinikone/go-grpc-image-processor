@@ -4,6 +4,15 @@ I just wanted to play around and learn more about concurrent development in Go, 
 
 ![image](https://github.com/kerosiinikone/go-image-processor/assets/100020686/2e5d245e-0458-40be-9ac8-1387877c5781)
 
+### How to run locally:
+```
+make run-worker-invert
+make run-worker-resize
+make run-client
+```
+
+Keep the order of commands as the connections between nodes are dependent on the gRPC server coming alive first and they are established immediately after execution.
+
 ## TODOs
 
 - Tests
